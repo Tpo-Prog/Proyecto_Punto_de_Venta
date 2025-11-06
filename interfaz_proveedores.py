@@ -11,6 +11,11 @@ def abrir_ventana_proveedores(parent):
     ventana.transient(parent)
     ventana.grab_set()
 
+
+    # Variable para guardar la lista de proveedores y no consultar la BD a cada rato
+    lista_proveedores_cache = []
+
+
     # --- Frames para la estructura ---
     # Frame para la lista de proveedores (arriba)
     frame_lista = ttk.Frame(ventana, padding="10")
@@ -82,12 +87,21 @@ def abrir_ventana_proveedores(parent):
 
     # --- Lógica de la Interfaz ---
     def cargar_proveedores():
+        # Limpiar Treeview
         for item in tree.get_children():
             tree.delete(item)
-        proveedores = funciones.listar_proveedores()
-        for p in proveedores:
-            # Solo se muestra algunas columnas en la lista, pero tenemos todos los datos
-            tree.insert("", tk.END, values=(p[0], p[1], p[2], p[3], p[4]), iid=p[0])
+            
+
+        nonlocal lista_proveedores_cache # Indicar que usamos la variable de caché
+        try:
+            # Cargar desde la BD y guardar en caché
+            lista_proveedores_cache = funciones.listar_proveedores()
+            # Llenar el treeview desde la caché (no desde la BD)
+            for p in lista_proveedores_cache:
+                tree.insert("", tk.END, values=(p[0], p[1], p[2], p[3], p[4]), iid=p[0])
+        except Exception as e:
+            messagebox.showerror("Error al Cargar", f"No se pudieron cargar los proveedores:\n\n{e}", parent=ventana)
+
 
     def limpiar_campos():
         entry_id.delete(0, tk.END)
@@ -106,8 +120,10 @@ def abrir_ventana_proveedores(parent):
             return
         
         id_seleccionado = tree.selection()[0]
-        # Buscamos el proveedor completo en la lista obtenida de la BD
-        proveedor_completo = next((p for p in funciones.listar_proveedores() if p[0] == int(id_seleccionado)), None)
+        
+
+        proveedor_completo = next((p for p in lista_proveedores_cache if p[0] == int(id_seleccionado)), None)
+
         
         if proveedor_completo:
             limpiar_campos()
@@ -137,22 +153,33 @@ def abrir_ventana_proveedores(parent):
         )
 
         id_prov = entry_id.get()
-        if id_prov:
-            funciones.editar_proveedor(id_prov, *datos)
-        else:
-            funciones.agregar_proveedor(*datos)
         
-        cargar_proveedores()
-        limpiar_campos()
+    
+        try:
+            if id_prov:
+                funciones.editar_proveedor(id_prov, *datos)
+            else:
+                funciones.agregar_proveedor(*datos)
+            
+            cargar_proveedores() # Recargar la lista (y la caché)
+            limpiar_campos()
+        except Exception as e:
+            messagebox.showerror("Error al Guardar", f"No se pudo guardar el proveedor:\n\n{e}", parent=ventana)
 
     def eliminar_proveedor():
         if not entry_id.get():
             messagebox.showerror("Error", "Debe seleccionar un proveedor para eliminar.", parent=ventana)
             return
         if messagebox.askyesno("Confirmar", "¿Está seguro de que desea eliminar este proveedor?", parent=ventana):
-            funciones.borrar_proveedor(entry_id.get())
-            cargar_proveedores()
-            limpiar_campos()
+            
+
+            try:
+                funciones.borrar_proveedor(entry_id.get())
+                cargar_proveedores() # Recargar la lista (y la caché)
+                limpiar_campos()
+            except Exception as e:
+                messagebox.showerror("Error al Eliminar", f"No se pudo eliminar el proveedor:\n\n{e}", parent=ventana)
+
 
     # Configuración de botones
     btn_guardar = ttk.Button(frame_botones, text="Guardar", command=guardar_proveedor)

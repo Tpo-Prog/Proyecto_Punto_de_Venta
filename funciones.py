@@ -6,12 +6,13 @@ from decimal import Decimal, InvalidOperation
 
 print("[DEBUG] Iniciando funciones.py...")
 
-def agregar_articulo(codigo, descripcion, precio, stock):
+
+def agregar_articulo(codigo, descripcion, precio, stock, id_proveedor):
     conn, cursor = get_db_connection()
     if not conn: return
     try:
-        sql = "INSERT INTO articulos (codigo, descripcion, precio, stock) VALUES (?, ?, ?, ?)"
-        cursor.execute(sql, (codigo, descripcion, precio, stock))
+        sql = "INSERT INTO articulos (codigo, descripcion, precio, stock, id_proveedor) VALUES (?, ?, ?, ?, ?)"
+        cursor.execute(sql, (codigo, descripcion, precio, stock, id_proveedor))
         conn.commit()
     except Exception as e:
         print(f"Error al agregar el artículo: {e}")
@@ -31,11 +32,22 @@ def buscar_articulo(texto_busqueda):
     finally:
         if conn: conn.close()
 
+
 def listar_articulos():
     conn, cursor = get_db_connection()
     if not conn: return []
     try:
-        cursor.execute("SELECT * FROM articulos ORDER BY descripcion")
+        # Unimos con proveedores para obtener el nombre
+        sql = """
+            SELECT 
+                a.id, a.codigo, a.descripcion, a.precio, a.stock,
+                a.id_proveedor, 
+                ISNULL(p.nombre, 'Sin Proveedor') AS nombre_proveedor
+            FROM articulos a
+            LEFT JOIN proveedores p ON a.id_proveedor = p.id
+            ORDER BY a.descripcion
+        """
+        cursor.execute(sql)
         return cursor.fetchall()
     except Exception as e:
         print(f"Error al listar artículos: {e}")
@@ -43,12 +55,13 @@ def listar_articulos():
     finally:
         if conn: conn.close()
 
-def editar_articulo(id, codigo, descripcion, precio, stock):
+
+def editar_articulo(id, codigo, descripcion, precio, stock, id_proveedor):
     conn, cursor = get_db_connection()
     if not conn: return
     try:
-        sql = "UPDATE articulos SET codigo = ?, descripcion = ?, precio = ?, stock = ? WHERE id = ?"
-        cursor.execute(sql, (codigo, descripcion, precio, stock, id))
+        sql = "UPDATE articulos SET codigo = ?, descripcion = ?, precio = ?, stock = ?, id_proveedor = ? WHERE id = ?"
+        cursor.execute(sql, (codigo, descripcion, precio, stock, id_proveedor, id))
         conn.commit()
     except Exception as e:
         print(f"Error al editar el artículo: {e}")
@@ -211,33 +224,40 @@ def cerrar_caja(id_sesion, monto_inicial, monto_final_real, ventas_sesion):
     finally:
         if conn: conn.close()
 
+
+
 def agregar_proveedor(nombre, cuit, telefono, email, direccion, notas):
     conn, cursor = get_db_connection()
-    if not conn: return
+    if not conn: 
+        raise Exception("No se pudo conectar a la base de datos.")
     try:
         sql = "INSERT INTO proveedores (nombre, cuit, telefono, email, direccion, notas) VALUES (?, ?, ?, ?, ?, ?)"
         cursor.execute(sql, (nombre, cuit, telefono, email, direccion, notas))
         conn.commit()
     except Exception as e:
+        conn.rollback()
         print(f"Error al agregar el proveedor: {e}")
+        raise Exception(f"Error al agregar el proveedor: {e}")
     finally:
         if conn: conn.close()
 
 def listar_proveedores():
     conn, cursor = get_db_connection()
-    if not conn: return []
+    if not conn: 
+        raise Exception("No se pudo conectar a la base de datos.") 
     try:
         cursor.execute("SELECT id, nombre, cuit, telefono, email, direccion, notas FROM proveedores ORDER BY nombre")
         return cursor.fetchall()
     except Exception as e:
         print(f"Error al listar proveedores: {e}")
-        return []
+        raise Exception(f"Error al listar proveedores: {e}")
     finally:
         if conn: conn.close()
 
 def editar_proveedor(id, nombre, cuit, telefono, email, direccion, notas):
     conn, cursor = get_db_connection()
-    if not conn: return
+    if not conn: 
+        raise Exception("No se pudo conectar a la base de datos.")
     try:
         sql = """
             UPDATE proveedores 
@@ -247,20 +267,27 @@ def editar_proveedor(id, nombre, cuit, telefono, email, direccion, notas):
         cursor.execute(sql, (nombre, cuit, telefono, email, direccion, notas, id))
         conn.commit()
     except Exception as e:
+        conn.rollback()
         print(f"Error al editar el proveedor: {e}")
+        raise Exception(f"Error al editar el proveedor: {e}") 
     finally:
         if conn: conn.close()
 
 def borrar_proveedor(id):
     conn, cursor = get_db_connection()
-    if not conn: return
+    if not conn: 
+        raise Exception("No se pudo conectar a la base de datos.")
     try:
         cursor.execute("DELETE FROM proveedores WHERE id = ?", (id,))
         conn.commit()
     except Exception as e:
+        conn.rollback()
         print(f"Error al borrar el proveedor: {e}")
+        raise Exception(f"Error al borrar el proveedor: {e}") 
     finally:
         if conn: conn.close()
+
+
 
 def hash_password(password):
     """Genera un hash SHA-256"""
@@ -331,7 +358,7 @@ def agregar_usuario(username, nombre, rol, password):
     conn, cursor = get_db_connection()
     if not conn: 
         print("[ERROR] funciones.py: agregar_usuario no pudo obtener conexión.")
-        raise Exception("No se pudo conectar a la base de datos.") # Raise exception to notify UI
+        raise Exception("No se pudo conectar a la base de datos.") 
     
     if not username or not password or not rol:
          raise ValueError("Username, Rol y Contraseña son obligatorios para nuevos usuarios.")
@@ -351,8 +378,8 @@ def agregar_usuario(username, nombre, rol, password):
          raise Exception(f"El username '{username}' ya existe.") 
     except Exception as e:
         print(f"[ERROR] funciones.py: Error al agregar usuario '{username}': {e}")
-        conn.rollback() # Deshacer si algo falló
-        raise Exception(f"Error inesperado al agregar usuario: {e}") # Re-lanzar para la UI
+        conn.rollback() 
+        raise Exception(f"Error inesperado al agregar usuario: {e}") 
     finally:
         if conn:
             print("[DEBUG] funciones.py: Cerrando conexión de agregar_usuario.")

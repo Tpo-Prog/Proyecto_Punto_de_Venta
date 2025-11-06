@@ -22,7 +22,22 @@ def crear_tablas():
         return
 
     try:
-        # --- Tabla de Artículos ---
+        # --- Tabla de Proveedores (Debe existir ANTES que artículos) ---
+        print("[DEBUG] ejecutame: Creando tabla 'proveedores'...")
+        cursor.execute("""
+        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='proveedores' AND xtype='U')
+        CREATE TABLE proveedores (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            nombre VARCHAR(255) NOT NULL,
+            cuit VARCHAR(20) UNIQUE,
+            telefono VARCHAR(50),
+            email VARCHAR(255),
+            direccion VARCHAR(255),
+            notas TEXT
+        )
+        """)
+
+        # --- Tabla de Artículos 
         print("[DEBUG] ejecutame: Creando tabla 'articulos'...")
         cursor.execute("""
         IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='articulos' AND xtype='U')
@@ -31,10 +46,12 @@ def crear_tablas():
             codigo VARCHAR(50) UNIQUE NOT NULL,
             descripcion VARCHAR(255) NOT NULL,
             precio DECIMAL(10, 2) NOT NULL,
-            stock INT NOT NULL
+            stock INT NOT NULL,
+            id_proveedor INT,
+            FOREIGN KEY (id_proveedor) REFERENCES proveedores(id) ON DELETE SET NULL
         )
         """)
-
+        
         # --- Tabla de Caja ---
         print("[DEBUG] ejecutame: Creando tabla 'caja'...")
         cursor.execute("""
@@ -84,21 +101,6 @@ def crear_tablas():
             nombre_articulo VARCHAR(255),
             FOREIGN KEY (id_ticket) REFERENCES tickets(id),
             FOREIGN KEY (id_articulo) REFERENCES articulos(id)
-        )
-        """)
-        
-        # --- Tabla de Proveedores ---
-        print("[DEBUG] ejecutame: Creando tabla 'proveedores'...")
-        cursor.execute("""
-        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='proveedores' AND xtype='U')
-        CREATE TABLE proveedores (
-            id INT IDENTITY(1,1) PRIMARY KEY,
-            nombre VARCHAR(255) NOT NULL,
-            cuit VARCHAR(20) UNIQUE,
-            telefono VARCHAR(50),
-            email VARCHAR(255),
-            direccion VARCHAR(255),
-            notas TEXT
         )
         """)
 

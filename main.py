@@ -20,6 +20,10 @@ import traceback
 print("[DEBUG] main.py: Imports terminados.")
 
 class PuntoDeVentaApp:
+    
+    # --- CONSTANTE DE ALERTA DE STOCK ---
+    LOW_STOCK_THRESHOLD = 10
+    
     def __init__(self, root):
         print("[DEBUG] main.py: PuntoDeVentaApp.__init__ INICIADO.")
         self.root = root
@@ -169,11 +173,16 @@ class PuntoDeVentaApp:
         tk.Button(header_opciones, text="Graficos de venta", padx=10, pady=1, font=("Inter", 8), command=self.mostrar_graficos).pack(side="left", padx=15, pady=5)
         tk.Button(header_opciones, text="Generar Ticket Sim.", padx=10, pady=1, font=("Inter", 8), command=creartickets).pack(side="left", padx=8, pady=5)
         tk.Button(header_opciones, text="Generar PDF", padx=10, pady=1, font=("Inter", 8), command=lambda: abrir_ventana_pdf(self.root)).pack(side="left", padx=8, pady=5)
-        tk.Button(header_opciones, text="Proveedores", padx=10, pady=1, font=("Inter", 8), command=lambda: abrir_ventana_proveedores(self.root)).pack(side="left", padx=8, pady=5)
+        
+        # Solo mostrar Proveedores y Configuración si el usuario es 'admin'
+        if self.usuario_actual and self.usuario_actual.get('rol') == 'admin':
+            tk.Button(header_opciones, text="Proveedores", padx=10, pady=1, font=("Inter", 8), command=lambda: abrir_ventana_proveedores(self.root)).pack(side="left", padx=8, pady=5)
         
         tk.Button(header_opciones, text="Cerrar Caja", padx=10, pady=1, bg="#ffdddd", font=("Inter", 8), command=self.gestionar_cierre_caja).pack(side="right", padx=10, pady=5)
-        tk.Button(header_opciones, text="Configuración", padx=10, pady=1, font=("Inter", 8), command=self._abrir_ventana_usuarios).pack(side="right", padx=5, pady=5) 
-
+        
+        if self.usuario_actual and self.usuario_actual.get('rol') == 'admin':
+            tk.Button(header_opciones, text="Configuración", padx=10, pady=1, font=("Inter", 8), command=self._abrir_ventana_usuarios).pack(side="right", padx=5, pady=5) 
+        
 
         # --- Botones del Body ---
         tk.Label(body, text="Totales de Venta:").place(relx=0.81, rely=0.030)
@@ -182,16 +191,18 @@ class PuntoDeVentaApp:
         tk.Button(body, text="Nueva Venta",command=self.limpiar_resultados, padx=10, pady=1, bg="#B7E998", font=("Inter", 8), bd=1, relief="solid").place(relx=0.81, rely=0.4, relwidth=0.16, relheight=0.071)
         tk.Button(body, text="Eliminar Articulo", command=self.eliminar_articulos_seleccionados, padx=10, pady=1, bg="#F8A894", font=("Inter", 8), bd=1, relief="solid").place(relx=0.81, rely=0.5, relwidth=0.16, relheight=0.071)
         tk.Button(body, text="Aplicar Descuento", command=self.abrir_ventana_descuento, padx=10, pady=1, bg="#FDFD96", font=("Inter", 8), bd=1, relief="solid").place(relx=0.81, rely=0.6, relwidth=0.16, relheight=0.071)
-        tk.Button(body, text="Agregar Producto", padx=10, pady=1, bg="#A8E6CF", font=("Inter", 8), bd=1, relief="solid", command=self.ventana_agregar_producto).place(relx=0.81, rely=0.7, relwidth=0.16, relheight=0.071)
-
+        
+        # Se centraliza la lógica en la ventana "Inventario"
+        
         self._mostrar_encabezados()
 
     def _abrir_ventana_usuarios(self):
         """Abre la ventana de gestión de usuarios."""
         print("[INFO] Click en Configuración -> Llamando a abrir_ventana_gestion_usuarios...")
         
+        # Esta comprobación es una redundancia de seguridad (buena práctica)
+        # por si acaso el botón estuviera visible por error.
         if self.usuario_actual and self.usuario_actual.get('rol') == 'admin':
-            
             abrir_ventana_gestion_usuarios(self.root) 
         else:
              print("[WARN] main.py: Intento de acceso a gestión de usuarios por un no-admin.")
@@ -199,13 +210,15 @@ class PuntoDeVentaApp:
                                   "Solo los usuarios con rol 'admin' pueden gestionar usuarios.", 
                                   parent=self.root)
 
-
     def cargar_lista_completa_articulos(self):
         print("[DEBUG] main.py: Cargando lista completa de artículos...")
+        # La lista ahora contiene más datos (id_proveedor, nombre_proveedor)
+        # pero la lógica de búsqueda principal no se ve afectada.
         articulos_db = funciones.listar_articulos()
         self.lista_articulos_completa.clear()
         self.mapa_articulos.clear()
         for art in articulos_db:
+            # art[2] = descripcion, art[3] = precio
             texto_display = f"{art[2]} - ${art[3]:.2f}"
             self.lista_articulos_completa.append(texto_display)
             self.mapa_articulos[texto_display] = {"id": art[0], "codigo": art[1], "descripcion": art[2], "precio": art[3]}
@@ -404,69 +417,198 @@ class PuntoDeVentaApp:
                 messagebox.showerror("Dato inválido", "Ingrese un monto real válido.", parent=cierre_win)
         tk.Button(frame, text="Confirmar y Salir", command=confirmar_cierre, bg="#F8A894").grid(row=9, columnspan=2, sticky='ew', pady=15, ipady=5)
 
+
     def abrir_ventana_inventario(self):
         inventario_win = tk.Toplevel(self.root)
         inventario_win.title("Gestión de Inventario")
-        inventario_win.geometry("900x600")
+        inventario_win.geometry("1100x700") # Un poco más grande para el proveedor
+        inventario_win.transient(self.root)
+        inventario_win.grab_set()
+
+    
+        proveedor_map = {} # Almacena "Nombre Proveedor" -> ID
+        
+        # --- Frames ---
         frame_lista = tk.Frame(inventario_win, bd=2, relief="groove")
         frame_lista.pack(pady=10, padx=10, fill="both", expand=True)
         frame_controles = tk.Frame(inventario_win, bd=2, relief="groove")
         frame_controles.pack(pady=10, padx=10, fill="x")
-        columnas = ("id", "codigo", "descripcion", "precio", "stock")
+
+        # --- Treeview (Grilla) ---
+        columnas = ("id", "codigo", "descripcion", "precio", "stock", "proveedor")
         tree = ttk.Treeview(frame_lista, columns=columnas, show="headings")
-        tree.heading("id", text="ID"); tree.heading("codigo", text="Código"); tree.heading("descripcion", text="Descripción"); tree.heading("precio", text="Precio"); tree.heading("stock", text="Stock")
-        tree.column("id", width=50, anchor=tk.CENTER); tree.column("codigo", width=100, anchor=tk.CENTER); tree.column("descripcion", width=350); tree.column("precio", width=100, anchor=tk.E); tree.column("stock", width=100, anchor=tk.CENTER)
-        tree.pack(fill="both", expand=True)
-        tk.Label(frame_controles, text="Código:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        entry_codigo = tk.Entry(frame_controles, width=30); entry_codigo.grid(row=0, column=1, padx=5, pady=5)
-        entry_id = tk.Entry(frame_controles) # Campo oculto para el ID
-        tk.Label(frame_controles, text="Descripción:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        entry_descripcion = tk.Entry(frame_controles, width=50); entry_descripcion.grid(row=1, column=1, padx=5, pady=5, columnspan=2)
-        tk.Label(frame_controles, text="Precio:").grid(row=0, column=2, padx=5, pady=5, sticky="w")
-        entry_precio = tk.Entry(frame_controles, width=20); entry_precio.grid(row=0, column=3, padx=5, pady=5)
-        tk.Label(frame_controles, text="Stock:").grid(row=1, column=3, padx=5, pady=5, sticky="w")
-        entry_stock = tk.Entry(frame_controles, width=20); entry_stock.grid(row=1, column=4, padx=5, pady=5)
+        tree.heading("id", text="ID")
+        tree.heading("codigo", text="Código")
+        tree.heading("descripcion", text="Descripción")
+        tree.heading("precio", text="Precio")
+        tree.heading("stock", text="Stock")
+        tree.heading("proveedor", text="Proveedor") # Nueva columna
         
+        tree.column("id", width=50, anchor=tk.CENTER)
+        tree.column("codigo", width=100, anchor=tk.CENTER)
+        tree.column("descripcion", width=350)
+        tree.column("precio", width=100, anchor=tk.E)
+        tree.column("stock", width=100, anchor=tk.CENTER)
+        tree.column("proveedor", width=200) # Nueva columna
+
+
+        tree.tag_configure("low_stock", background="#FFDDDD", foreground="black") # Rojo claro
+        tree.tag_configure("normal_stock", background="white", foreground="black")
+
+        tree.pack(fill="both", expand=True)
+
+        # --- Formulario de Controles ---
+        tk.Label(frame_controles, text="Código:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        entry_codigo = tk.Entry(frame_controles, width=30)
+        entry_codigo.grid(row=0, column=1, padx=5, pady=5)
+        
+        entry_id = tk.Entry(frame_controles) # Campo oculto para el ID
+        entry_id_proveedor = tk.Entry(frame_controles) # Campo oculto para ID Proveedor
+
+        tk.Label(frame_controles, text="Descripción:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        entry_descripcion = tk.Entry(frame_controles, width=50)
+        entry_descripcion.grid(row=1, column=1, padx=5, pady=5, columnspan=3)
+
+        tk.Label(frame_controles, text="Precio:").grid(row=0, column=2, padx=5, pady=5, sticky="w")
+        entry_precio = tk.Entry(frame_controles, width=20)
+        entry_precio.grid(row=0, column=3, padx=5, pady=5)
+        
+        tk.Label(frame_controles, text="Stock:").grid(row=0, column=4, padx=5, pady=5, sticky="w")
+        entry_stock = tk.Entry(frame_controles, width=20)
+        entry_stock.grid(row=0, column=5, padx=5, pady=5)
+        
+
+        tk.Label(frame_controles, text="Proveedor:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        combo_proveedor = ttk.Combobox(frame_controles, state="readonly", width=47)
+        combo_proveedor.grid(row=2, column=1, padx=5, pady=5, columnspan=3, sticky="w")
+
+        # --- Cargar Proveedores en el Combobox ---
+        def cargar_dropdown_proveedores():
+            try:
+                proveedor_map.clear()
+                proveedores_db = funciones.listar_proveedores()
+                nombres_proveedores = ["Sin Proveedor"] # Opción por defecto
+                
+                proveedor_map["Sin Proveedor"] = None # Mapear "Sin Proveedor" a None (NULL)
+                
+                for p in proveedores_db:
+                    # p[0] = id, p[1] = nombre
+                    nombres_proveedores.append(p[1])
+                    proveedor_map[p[1]] = p[0]
+                    
+                combo_proveedor['values'] = nombres_proveedores
+                combo_proveedor.set("Sin Proveedor")
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudieron cargar los proveedores: {e}", parent=inventario_win)
+        
+        # --- Lógica de la ventana ---
         def cargar_articulos():
             for item in tree.get_children(): tree.delete(item)
-            for art in funciones.listar_articulos(): tree.insert("", tk.END, values=(art[0], art[1], art[2], f"{art[3]:.2f}", art[4]))
+            try:
+                # listar_articulos() ahora devuelve (id, cod, desc, precio, stock, id_prov, nombre_prov)
+                for art in funciones.listar_articulos():
+                    stock_actual = art[4]
+                    
+                    # Determinar el tag de color según el stock
+                    tag = "low_stock" if stock_actual <= self.LOW_STOCK_THRESHOLD else "normal_stock"
+                    
+
+                    valores_grilla = (art[0], art[1], art[2], f"{art[3]:.2f}", art[4], art[6])
+                    
+                    tree.insert("", tk.END, values=valores_grilla, tags=(tag,))
+            except Exception as e:
+                 messagebox.showerror("Error", f"No se pudieron cargar los artículos: {e}", parent=inventario_win)
         
         def limpiar_campos():
-            entry_id.delete(0, tk.END); entry_codigo.delete(0, tk.END); entry_descripcion.delete(0, tk.END); entry_precio.delete(0, tk.END); entry_stock.delete(0, tk.END)
-            if tree.selection(): tree.selection_remove(tree.selection()[0])
+            entry_id.delete(0, tk.END)
+            entry_id_proveedor.delete(0, tk.END)
+            entry_codigo.delete(0, tk.END)
+            entry_descripcion.delete(0, tk.END)
+            entry_precio.delete(0, tk.END)
+            entry_stock.delete(0, tk.END)
+            combo_proveedor.set("Sin Proveedor") # Resetear combobox
+            if tree.selection(): 
+                tree.selection_remove(tree.selection()[0])
             entry_codigo.focus()
 
         def seleccionar_articulo(event):
             if not tree.selection(): return
             item = tree.item(tree.selection()[0])
-            valores = item['values']
+            valores = item['values'] # (id, cod, desc, precio_str, stock, nombre_prov)
+            
             limpiar_campos()
-            entry_id.insert(0, valores[0]); entry_codigo.insert(0, valores[1]); entry_descripcion.insert(0, valores[2]); entry_precio.insert(0, valores[3]); entry_stock.insert(0, valores[4])
+            entry_id.insert(0, valores[0])
+            entry_codigo.insert(0, valores[1])
+            entry_descripcion.insert(0, valores[2])
+            entry_precio.insert(0, valores[3]) # Precio ya viene como string "$XX.XX"
+            entry_stock.insert(0, valores[4])
+            
+            # --- Setear el combobox ---
+            nombre_prov_seleccionado = valores[5]
+            if nombre_prov_seleccionado in proveedor_map:
+                combo_proveedor.set(nombre_prov_seleccionado)
+            else:
+                combo_proveedor.set("Sin Proveedor")
+
         tree.bind("<<TreeviewSelect>>", seleccionar_articulo)
 
         def guardar_articulo():
             if not all([entry_codigo.get(), entry_descripcion.get(), entry_precio.get(), entry_stock.get()]):
-                messagebox.showerror("Error", "Todos los campos son obligatorios.", parent=inventario_win); return
+                messagebox.showerror("Error", "Los campos Código, Descripción, Precio y Stock son obligatorios.", parent=inventario_win)
+                return
             try:
-                precio = float(entry_precio.get().replace(",", ".")); stock = int(entry_stock.get())
+                precio = float(entry_precio.get().replace(",", ".").replace("$",""))
+                stock = int(entry_stock.get())
             except ValueError:
-                messagebox.showerror("Error", "Precio y Stock deben ser números válidos.", parent=inventario_win); return
-            if entry_id.get():
-                funciones.editar_articulo(entry_id.get(), entry_codigo.get(), entry_descripcion.get(), precio, stock)
-            else:
-                funciones.agregar_articulo(entry_codigo.get(), entry_descripcion.get(), precio, stock)
-            cargar_articulos(); limpiar_campos()
+                messagebox.showerror("Error", "Precio y Stock deben ser números válidos.", parent=inventario_win)
+                return
+
+            # --- Obtener ID del Proveedor desde el Combobox ---
+            nombre_prov_seleccionado = combo_proveedor.get()
+            id_proveedor_seleccionado = proveedor_map.get(nombre_prov_seleccionado, None) # Devuelve ID o None
+
+            try:
+                if entry_id.get(): # Editar
+                    funciones.editar_articulo(
+                        entry_id.get(), entry_codigo.get(), entry_descripcion.get(), 
+                        precio, stock, id_proveedor_seleccionado
+                    )
+                else: # Agregar
+                    funciones.agregar_articulo(
+                        entry_codigo.get(), entry_descripcion.get(), 
+                        precio, stock, id_proveedor_seleccionado
+                    )
+                
+                cargar_articulos() # Recargar la grilla
+                limpiar_campos()
+                self.cargar_lista_completa_articulos() # Recargar la lista de búsqueda principal
+                
+            except Exception as e:
+                messagebox.showerror("Error al Guardar", f"No se pudo guardar el artículo:\n\n{e}", parent=inventario_win)
 
         def eliminar_articulo():
             if not entry_id.get():
-                messagebox.showerror("Error", "Debe seleccionar un artículo para eliminar.", parent=inventario_win); return
+                messagebox.showerror("Error", "Debe seleccionar un artículo para eliminar.", parent=inventario_win)
+                return
             if messagebox.askyesno("Confirmar", "¿Está seguro de que desea eliminar este artículo?", parent=inventario_win):
-                funciones.borrar_articulo(entry_id.get()); cargar_articulos(); limpiar_campos()
+                try:
+                    funciones.borrar_articulo(entry_id.get())
+                    cargar_articulos()
+                    limpiar_campos()
+                    self.cargar_lista_completa_articulos() # Recargar la lista de búsqueda principal
+                except Exception as e:
+                    messagebox.showerror("Error al Eliminar", f"No se pudo eliminar el artículo:\n\n{e}", parent=inventario_win)
 
-        tk.Button(frame_controles, text="Guardar", command=guardar_articulo, bg="#B7E998").grid(row=0, column=5, padx=10, pady=5, sticky="ew")
-        tk.Button(frame_controles, text="Eliminar", command=eliminar_articulo, bg="#F8A894").grid(row=1, column=5, padx=10, pady=5, sticky="ew")
-        tk.Button(frame_controles, text="Limpiar Campos", command=limpiar_campos).grid(row=0, column=6, rowspan=2, padx=10, pady=5, sticky="ns")
+        # --- Botones del formulario ---
+        tk.Button(frame_controles, text="Guardar", command=guardar_articulo, bg="#B7E998").grid(row=0, column=6, padx=10, pady=5, sticky="ew")
+        tk.Button(frame_controles, text="Eliminar", command=eliminar_articulo, bg="#F8A894").grid(row=1, column=6, padx=10, pady=5, sticky="ew")
+        tk.Button(frame_controles, text="Limpiar Campos", command=limpiar_campos).grid(row=2, column=6, padx=10, pady=5, sticky="ew")
+        
+        # --- Carga inicial ---
+        cargar_dropdown_proveedores()
         cargar_articulos()
+        
+
 
     def mostrar_articulos_en_grilla(self):
         for widget in self.info_articulos.winfo_children():
@@ -502,22 +644,6 @@ class PuntoDeVentaApp:
         generar_grafico_ventas_por_articulo()
         generar_grafico_cantidad_por_articulo()
         generar_grafico_ventas_por_dia()
-
-    def ventana_agregar_producto(self):
-        ventana = tk.Toplevel(self.root)
-        ventana.title("Agregar productos"); ventana.geometry("300x250"); ventana.resizable(False,False)
-        tk.Label(ventana, text="Código").pack(pady=5); entry_codigo = tk.Entry(ventana); entry_codigo.pack()
-        tk.Label(ventana, text="Descripción:").pack(pady=5); entry_descripcion = tk.Entry(ventana); entry_descripcion.pack()
-        tk.Label(ventana, text="Precio:").pack(pady=5); entry_precio = tk.Entry(ventana); entry_precio.pack()
-        tk.Label(ventana, text="Stock:").pack(pady=5); entry_stock = tk.Entry(ventana); entry_stock.pack()
-        def guardar_producto():
-            try:
-                funciones.agregar_articulo(entry_codigo.get(), entry_descripcion.get(), float(entry_precio.get().replace(",", ".")), int(entry_stock.get()))
-                messagebox.showinfo("Éxito", "✅ Producto agregado correctamente", parent=ventana)
-                ventana.destroy()
-            except Exception as e:
-                messagebox.showerror("Error", f"❌ Datos inválidos: {e}", parent=ventana)
-        tk.Button(ventana, text="Agregar", command=guardar_producto, bg="#B7E998").pack(pady=15)
 
     def limpiar_resultados(self): 
         self.articulos_agregados.clear()
