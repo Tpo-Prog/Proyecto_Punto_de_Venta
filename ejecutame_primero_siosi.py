@@ -138,4 +138,4 @@ def crear_tablas():
 if __name__ == "__main__":
     print("🔄 Iniciando configuración de base de datos...")
     crear_tablas()
-    print("🎉 ¡Base de datos lista!")
+    print("🎉 ¡Base de datos lista!")|  

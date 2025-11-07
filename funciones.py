@@ -1,3 +1,4 @@
+# funciones.py (CORREGIDO)
 import pyodbc
 from db import get_db_connection
 from datetime import datetime
@@ -6,8 +7,7 @@ from decimal import Decimal, InvalidOperation
 
 print("[DEBUG] Iniciando funciones.py...")
 
-
-def agregar_articulo(codigo, descripcion, precio, stock, id_proveedor):
+def agregar_articulo(codigo, descripcion, precio, stock):
     conn, cursor = get_db_connection()
     if not conn: return
     try:
@@ -32,7 +32,6 @@ def buscar_articulo(texto_busqueda):
     finally:
         if conn: conn.close()
 
-
 def listar_articulos():
     conn, cursor = get_db_connection()
     if not conn: return []
@@ -55,8 +54,7 @@ def listar_articulos():
     finally:
         if conn: conn.close()
 
-
-def editar_articulo(id, codigo, descripcion, precio, stock, id_proveedor):
+def editar_articulo(id, codigo, descripcion, precio, stock):
     conn, cursor = get_db_connection()
     if not conn: return
     try:
@@ -224,8 +222,6 @@ def cerrar_caja(id_sesion, monto_inicial, monto_final_real, ventas_sesion):
     finally:
         if conn: conn.close()
 
-
-
 def agregar_proveedor(nombre, cuit, telefono, email, direccion, notas):
     conn, cursor = get_db_connection()
     if not conn: 
@@ -237,20 +233,18 @@ def agregar_proveedor(nombre, cuit, telefono, email, direccion, notas):
     except Exception as e:
         conn.rollback()
         print(f"Error al agregar el proveedor: {e}")
-        raise Exception(f"Error al agregar el proveedor: {e}")
     finally:
         if conn: conn.close()
 
 def listar_proveedores():
     conn, cursor = get_db_connection()
-    if not conn: 
-        raise Exception("No se pudo conectar a la base de datos.") 
+    if not conn: return []
     try:
         cursor.execute("SELECT id, nombre, cuit, telefono, email, direccion, notas FROM proveedores ORDER BY nombre")
         return cursor.fetchall()
     except Exception as e:
         print(f"Error al listar proveedores: {e}")
-        raise Exception(f"Error al listar proveedores: {e}")
+        return []
     finally:
         if conn: conn.close()
 
@@ -269,7 +263,6 @@ def editar_proveedor(id, nombre, cuit, telefono, email, direccion, notas):
     except Exception as e:
         conn.rollback()
         print(f"Error al editar el proveedor: {e}")
-        raise Exception(f"Error al editar el proveedor: {e}") 
     finally:
         if conn: conn.close()
 
@@ -283,9 +276,10 @@ def borrar_proveedor(id):
     except Exception as e:
         conn.rollback()
         print(f"Error al borrar el proveedor: {e}")
-        raise Exception(f"Error al borrar el proveedor: {e}") 
     finally:
         if conn: conn.close()
+# --- MEJORA 2: FIN ---
+
 
 
 
@@ -469,5 +463,92 @@ def borrar_usuario(id_usuario):
         if conn:
             print("[DEBUG] funciones.py: Cerrando conexión de borrar_usuario.")
             conn.close()
+
+# --- NUEVAS FUNCIONES PARA EL DASHBOARD (MODIFICADAS) ---
+# --- MODIFICADA ---
+def get_ventas_por_dia(fecha_desde, fecha_hasta, id_articulo=None):
+    """Obtiene el total de ventas por día en un rango de fechas, con filtro opcional por artículo."""
+    print(f"[DEBUG] funciones.py: Obteniendo ventas por día de {fecha_desde} a {fecha_hasta}, Artículo ID: {id_articulo}")
+    conn, cursor = get_db_connection()
+    if not conn: return []
+    try:
+        # Lista de parámetros para la consulta SQL
+        params = [fecha_desde, fecha_hasta]
+        
+        # La consulta base une tickets y detalle
+        sql = """
+            SELECT 
+                CAST(t.fecha AS DATE) AS fecha_dia, 
+                SUM(dt.cantidad * dt.precio_unitario) AS total_dia
+            FROM tickets t
+            JOIN detalle_ticket dt ON t.id = dt.id_ticket
+            WHERE CAST(t.fecha AS DATE) BETWEEN ? AND ?
+        """
+        
+        # --- Añadir filtro de artículo si se proporciona ---
+        if id_articulo is not None:
+            sql += " AND dt.id_articulo = ? "
+            params.append(id_articulo)
+            
+        sql += """
+            GROUP BY CAST(t.fecha AS DATE)
+            ORDER BY fecha_dia
+        """
+        
+        cursor.execute(sql, params)
+        return cursor.fetchall()
+    except Exception as e:
+        print(f"Error al obtener ventas por día: {e}")
+        return []
+    finally:
+        if conn: conn.close()
+# --- FIN MODIFICADA ---
+
+def get_top_articulos_vendidos(fecha_desde, fecha_hasta, top_n=10):
+    """Obtiene el TOP N de artículos más vendidos (por monto) en un rango de fechas."""
+    print(f"[DEBUG] funciones.py: Obteniendo top {top_n} artículos de {fecha_desde} a {fecha_hasta}")
+    conn, cursor = get_db_connection()
+    if not conn: return []
+    try:
+        sql = f"""
+            SELECT TOP (?) 
+                dt.nombre_articulo, 
+                SUM(dt.cantidad * dt.precio_unitario) AS total_ventas
+            FROM detalle_ticket dt
+            JOIN tickets t ON dt.id_ticket = t.id
+            WHERE CAST(t.fecha AS DATE) BETWEEN ? AND ?
+            GROUP BY dt.nombre_articulo
+            ORDER BY total_ventas DESC
+        """
+        cursor.execute(sql, (top_n, fecha_desde, fecha_hasta))
+        return cursor.fetchall()
+    except Exception as e:
+        print(f"Error al obtener top artículos: {e}")
+        return []
+    finally:
+        if conn: conn.close()
+
+def get_stock_por_proveedor():
+    """Obtiene el conteo de cuántos artículos diferentes provee cada proveedor (Stock)."""
+    print(f"[DEBUG] funciones.py: Obteniendo conteo de stock por proveedor")
+    conn, cursor = get_db_connection()
+    if not conn: return []
+    try:
+        sql = """
+            SELECT 
+                ISNULL(p.nombre, 'Sin Proveedor') AS proveedor, 
+                COUNT(a.id) AS total_articulos
+            FROM articulos a
+            LEFT JOIN proveedores p ON a.id_proveedor = p.id
+            GROUP BY p.nombre
+            ORDER BY total_articulos DESC
+        """
+        cursor.execute(sql)
+        return cursor.fetchall()
+    except Exception as e:
+        print(f"Error al obtener stock por proveedor: {e}")
+        return []
+    finally:
+        if conn: conn.close()
 
 print("[DEBUG] funciones.py: Archivo importado.")
